@@ -15,7 +15,6 @@ Create an account in https://www.themoviedb.org/, click on the API link from the
 4. Replace YOUR_API_KEY in both the places (line no. 23 and 43) of static/recommend.js file.
 5. Open your terminal/command prompt from your project directory and run the file main.py by executing the command python main.py.
 6. Go to your browser and type http://127.0.0.1:5000/ in the address bar.
-7. Hurray! That's it.
 
 ## Similarity Score :
 How does it decide which item is most similar to the item user likes? Here we use the similarity scores.
