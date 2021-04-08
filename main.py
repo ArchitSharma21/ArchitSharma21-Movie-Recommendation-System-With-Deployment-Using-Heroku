@@ -8,130 +8,159 @@ import bs4 as bs
 import urllib.request
 import pickle
 import requests
-from datetime import date, datetime
+
+from tmdbv3api import TMDb
+tmdb = TMDb()
+tmdb.api_key = 'YOUR_API_KEY'
+
+from tmdbv3api import Movie
 
 # load the nlp model and tfidf vectorizer from disk
 filename = 'nlp_model.pkl'
 clf = pickle.load(open(filename, 'rb'))
 vectorizer = pickle.load(open('tranform.pkl','rb'))
-    
-# converting list of string to list (eg. "["abc","def"]" to ["abc","def"])
-def convert_to_list(my_list):
-    my_list = my_list.split('","')
-    my_list[0] = my_list[0].replace('["','')
-    my_list[-1] = my_list[-1].replace('"]','')
-    return my_list
 
-# convert list of numbers to list (eg. "[1,2,3]" to [1,2,3])
-def convert_to_list_num(my_list):
-    my_list = my_list.split(',')
-    my_list[0] = my_list[0].replace("[","")
-    my_list[-1] = my_list[-1].replace("]","")
-    return my_list
+def create_sim():
+    data = pd.read_csv('main_data.csv')
+    # creating a count matrix
+    cv = CountVectorizer()
+    count_matrix = cv.fit_transform(data['comb'])
+    # creating a similarity score matrix
+    sim = cosine_similarity(count_matrix)
+    return data,sim
+
+
+def rcmd(m):
+    m = m.lower()
+    try:
+        data.head()
+        sim.shape
+    except:
+        data, sim = create_sim()
+    if m not in data['movie_title'].unique():
+        return('Sorry! The movie your searched is not in our database. Please check the spelling or try with some other movies')
+    else:
+        i = data.loc[data['movie_title']==m].index[0]
+        lst = list(enumerate(sim[i]))
+        lst = sorted(lst, key = lambda x:x[1] ,reverse=True)
+        lst = lst[1:11]
+        l = []
+        for i in range(len(lst)):
+            a = lst[i][0]
+            l.append(data['movie_title'][a])
+        return l
+
+def ListOfGenres(genre_json):
+    if genre_json:
+        genres = []
+        genre_str = ", " 
+        for i in range(0,len(genre_json)):
+            genres.append(genre_json[i]['name'])
+        return genre_str.join(genres)
+
+def date_convert(s):
+    MONTHS = ['January', 'February', 'Match', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December']
+    y = s[:4]
+    m = int(s[5:-3])
+    d = s[8:]
+    month_name = MONTHS[m-1]
+
+    result= month_name + ' ' + d + ' '  + y
+    return result
+
+def MinsToHours(duration):
+    if duration%60==0:
+        return "{:.0f} hours".format(duration/60)
+    else:
+        return "{:.0f} hours {} minutes".format(duration/60,duration%60)
 
 def get_suggestions():
     data = pd.read_csv('main_data.csv')
     return list(data['movie_title'].str.capitalize())
 
+
 app = Flask(__name__)
 
 @app.route("/")
-@app.route("/home")
 def home():
     suggestions = get_suggestions()
-    return render_template('home.html',suggestions=suggestions)
+    return render_template('home.html')
 
 
-@app.route("/recommend",methods=["POST"])
+@app.route("/recommend")
 def recommend():
-    # getting data from AJAX request
-    title = request.form['title']
-    cast_ids = request.form['cast_ids']
-    cast_names = request.form['cast_names']
-    cast_chars = request.form['cast_chars']
-    cast_bdays = request.form['cast_bdays']
-    cast_bios = request.form['cast_bios']
-    cast_places = request.form['cast_places']
-    cast_profiles = request.form['cast_profiles']
-    imdb_id = request.form['imdb_id']
-    poster = request.form['poster']
-    genres = request.form['genres']
-    overview = request.form['overview']
-    vote_average = request.form['rating']
-    vote_count = request.form['vote_count']
-    rel_date = request.form['rel_date']
-    release_date = request.form['release_date']
-    runtime = request.form['runtime']
-    status = request.form['status']
-    rec_movies = request.form['rec_movies']
-    rec_posters = request.form['rec_posters']
-    rec_movies_org = request.form['rec_movies_org']
-    rec_year = request.form['rec_year']
-    rec_vote = request.form['rec_vote']
+    movie = request.args.get('movie') # get movie name from the URL
+    r = rcmd(movie)
+    movie = movie.upper()
+    if type(r)==type('string'): # no such movie found in the database
+        return render_template('recommend.html',movie=movie,r=r,t='s')
+    else:
+        tmdb_movie = Movie()
+        result = tmdb_movie.search(movie)
 
-    # get movie suggestions for auto complete
-    suggestions = get_suggestions()
+        # get movie id and movie title
+        movie_id = result[0].id
+        movie_name = result[0].title
+        
+        # making API call
+        response = requests.get('https://api.themoviedb.org/3/movie/{}?api_key={}'.format(movie_id,tmdb.api_key))
+        data_json = response.json()
+        imdb_id = data_json['imdb_id']
+        poster = data_json['poster_path']
+        img_path = 'https://image.tmdb.org/t/p/original{}'.format(poster)
 
-    # call the convert_to_list function for every string that needs to be converted to list
-    rec_movies_org = convert_to_list(rec_movies_org)
-    rec_movies = convert_to_list(rec_movies)
-    rec_posters = convert_to_list(rec_posters)
-    cast_names = convert_to_list(cast_names)
-    cast_chars = convert_to_list(cast_chars)
-    cast_profiles = convert_to_list(cast_profiles)
-    cast_bdays = convert_to_list(cast_bdays)
-    cast_bios = convert_to_list(cast_bios)
-    cast_places = convert_to_list(cast_places)
-    
-    # convert string to list (eg. "[1,2,3]" to [1,2,3])
-    cast_ids = convert_to_list_num(cast_ids)
-    rec_vote = convert_to_list_num(rec_vote)
-    rec_year = convert_to_list_num(rec_year)
-    
-    # rendering the string to python string
-    for i in range(len(cast_bios)):
-        cast_bios[i] = cast_bios[i].replace(r'\n', '\n').replace(r'\"','\"')
+        # getting list of genres form json
+        genre = ListOfGenres(data_json['genres'])
 
-    for i in range(len(cast_chars)):
-        cast_chars[i] = cast_chars[i].replace(r'\n', '\n').replace(r'\"','\"') 
-    
-    # combining multiple lists as a dictionary which can be passed to the html file so that it can be processed easily and the order of information will be preserved
-    movie_cards = {rec_posters[i]: [rec_movies[i],rec_movies_org[i],rec_vote[i],rec_year[i]] for i in range(len(rec_posters))}
+        # web scraping to get user reviews from IMDB site
+        sauce = urllib.request.urlopen('https://www.imdb.com/title/{}/reviews?ref_=tt_ov_rt'.format(imdb_id)).read()
+        soup = bs.BeautifulSoup(sauce,'lxml')
+        soup_result = soup.find_all("div",{"class":"text show-more__control"})
 
-    casts = {cast_names[i]:[cast_ids[i], cast_chars[i], cast_profiles[i]] for i in range(len(cast_profiles))}
+        reviews_list = [] # list of reviews
+        reviews_status = [] # list of comments (good or bad)
+        for reviews in soup_result:
+            if reviews.string:
+                reviews_list.append(reviews.string)
+                # passing the review to our model
+                movie_review_list = np.array([reviews.string])
+                movie_vector = vectorizer.transform(movie_review_list)
+                pred = clf.predict(movie_vector)
+                reviews_status.append('Good' if pred else 'Bad')
 
-    cast_details = {cast_names[i]:[cast_ids[i], cast_profiles[i], cast_bdays[i], cast_places[i], cast_bios[i]] for i in range(len(cast_places))}
+        # combining reviews and comments into dictionary
+        movie_reviews = {reviews_list[i]: reviews_status[i] for i in range(len(reviews_list))} 
 
-    # web scraping to get user reviews from IMDB site
-    sauce = urllib.request.urlopen('https://www.imdb.com/title/{}/reviews?ref_=tt_ov_rt'.format(imdb_id)).read()
-    soup = bs.BeautifulSoup(sauce,'lxml')
-    soup_result = soup.find_all("div",{"class":"text show-more__control"})
+        # getting votes with comma as thousands separators
+        vote_count = "{:,}".format(result[0].vote_count)
+        
+        # convert date to readable format (eg. 10-06-2019 to June 10 2019)
+        rd = date_convert(result[0].release_date)
 
-    reviews_list = [] # list of reviews
-    reviews_status = [] # list of comments (good or bad)
-    for reviews in soup_result:
-        if reviews.string:
-            reviews_list.append(reviews.string)
-            # passing the review to our model
-            movie_review_list = np.array([reviews.string])
-            movie_vector = vectorizer.transform(movie_review_list)
-            pred = clf.predict(movie_vector)
-            reviews_status.append('Positive' if pred else 'Negative')
+        # getting the status of the movie (released or not)
+        status = data_json['status']
 
-    # getting current date
-    movie_rel_date = ""
-    curr_date = ""
-    if(rel_date):
-        today = str(date.today())
-        curr_date = datetime.strptime(today,'%Y-%m-%d')
-        movie_rel_date = datetime.strptime(rel_date, '%Y-%m-%d')
+        # convert minutes to hours minutes (eg. 148 minutes to 2 hours 28 mins)
+        runtime = MinsToHours(data_json['runtime'])
 
-    # combining reviews and comments into a dictionary
-    movie_reviews = {reviews_list[i]: reviews_status[i] for i in range(len(reviews_list))}     
+        # getting the posters for the recommended movies
+        poster = []
+        movie_title_list = []
+        for movie_title in r:
+            list_result = tmdb_movie.search(movie_title)
+            movie_id = list_result[0].id
+            response = requests.get('https://api.themoviedb.org/3/movie/{}?api_key={}'.format(movie_id,tmdb.api_key))
+            data_json = response.json()
+            poster.append('https://image.tmdb.org/t/p/original{}'.format(data_json['poster_path']))
+        movie_cards = {poster[i]: r[i] for i in range(len(r))}
 
-    # passing all the data to the html file
-    return render_template('recommend.html',title=title,poster=poster,overview=overview,vote_average=vote_average,
-        vote_count=vote_count,release_date=release_date,movie_rel_date=movie_rel_date,curr_date=curr_date,runtime=runtime,status=status,genres=genres,movie_cards=movie_cards,reviews=movie_reviews,casts=casts,cast_details=cast_details)
+        # get movie names for auto completion
+        suggestions = get_suggestions()
+        
+        return render_template('recommend.html',movie=movie,mtitle=r,t='l',cards=movie_cards,
+            result=result[0],reviews=movie_reviews,img_path=img_path,genres=genre,vote_count=vote_count,
+            release_date=rd,status=status,runtime=runtime)
 
 if __name__ == '__main__':
     app.run(debug=True)
