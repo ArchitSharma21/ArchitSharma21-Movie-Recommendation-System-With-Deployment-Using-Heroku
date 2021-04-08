@@ -32,4 +32,4 @@ Cosine similarity is a metric used to measure how similar the documents are irre
 5. List of movies in 2020   https://en.wikipedia.org/wiki/List_of_American_films_of_2020
 
 ## Deployment on Heroku
-The deployment can be cjecked and verified at https://movie-recommendation-system21.herokuapp.com/
+The deployment can be checked and verified at https://movie-recommendation-system21.herokuapp.com/
